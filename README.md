@@ -1,8 +1,6 @@
 # Tyre estimation — vehicle simulator
 
-This repo is just the 7-DOF vehicle simulator I split out from a larger tyre-parameter project. There is no estimator, MPC stack, or TTC fitting code here — only the sim plus shared configs and the tyre model bits the sim imports.
-
-If you want the full framework, that lives in the parent project this was extracted from.
+This repo is the 7-DOF vehicle simulator I split out from a larger tyre-parameter project.
 
 ## Setup
 
@@ -45,4 +43,4 @@ python acceleration_event.py
 
 - `simulation/` — scripts, vehicle model, helpers, configs
 - `shared/` — tyre and vehicle parameter presets (`run_simulation` loads tyre presets from `shared/tyre_configs/`)
-- `estimator/` — only the tyre model dispatcher and Pacejka implementations the simulator imports (`core.tyre_model` and friends). Nothing here runs an estimator.
+- `estimator/` — contains the tyre model dispatcher and Pacejka implementations the simulator imports (`core.tyre_model` etc.). 
