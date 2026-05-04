@@ -1,0 +1,96 @@
+# Simulation mode: 'track' = follow track with driver model; 'excitation' = aggressive open-loop commands for estimator excitation
+mode: track
+
+# Set to true to show live debug plot (car position, velocity, Pacejka curves, traction ellipses).
+# Can also enable with CLI: --live-debug
+live_debug_plot: true
+
+# ---------------------------------------------------------------------------
+# Tyre temperature model (same structure as MPC)
+# When enabled, temperatures are computed each step and passed to the tyre model.
+# ---------------------------------------------------------------------------
+tyre_temperature:
+  # "none" = use nominal T_opt from tyre config (no variation)
+  # "sine" = T(t) = base + amplitude * sin(2*pi*freq*t) per axle
+  # "ode"  = single-state dT/dt from slip/load heating and Newton cooling
+  # "lumped" = two-state tread+bulk ODE per wheel (from thermal_fit model)
+  mode: none
+  # Sine mode
+  temp_sine_base_f: 60.0
+  temp_sine_base_r: 60.0
+  temp_sine_amplitude_f: 20.0
+  temp_sine_amplitude_r: 15.0
+  temp_sine_freq_f: 0.02
+  temp_sine_freq_r: 0.015
+  # ODE mode (single-state)
+  temp_ode_initial: 25.0
+  temp_ode_T_ambient: 25.0
+  temp_ode_heat_rate: 0.0
+  temp_ode_heat_rate_alpha: 0.03
+  temp_ode_heat_rate_kappa: 0.02
+  temp_ode_cooling_rate: 0.1
+  # Lumped mode (two-state tread+bulk per wheel, matches thermal_fit.py model):
+  #   dTt/dt = (1/c_tread) * [heat - k_bt*(Tt-Tb) - k_ta*(Tt-T_air) - k_tg*(Tt-T_ground)]
+  #   dTb/dt = (1/c_bulk)  * k_bt * (Tt - Tb)
+  lumped_T_initial: 60.0       # Initial tread & bulk temperature [°C]
+  lumped_T_air: 25.0           # Ambient air temperature [°C]
+  lumped_T_ground: 30.0        # Ground temperature [°C]
+  lumped_h_alpha: 0.03493      # Heating rate from slip angle [°C/(rad·N·s)] (fitted)
+  lumped_h_kappa: 0.0151       # Heating rate from slip ratio [°C/(1·N·s)]
+  lumped_k_bt: 0.423864        # Tread-bulk coupling coefficient [1/s] (fitted)
+  lumped_k_ta: 0.037442        # Tread-air convective coefficient [1/s] (fitted)
+  lumped_k_tg: 0.001           # Tread-ground conductive coefficient [1/s] (fitted)
+  lumped_c_tread: 1.0          # Tread thermal capacity (dimensionless scale)
+  lumped_c_bulk: 9.278181      # Bulk thermal capacity (dimensionless scale) (fitted)
+
+
+# ---------------------------------------------------------------------------
+# Track mode (used when mode == 'track')
+# ---------------------------------------------------------------------------
+track:
+  num_laps: 1
+  segments:
+    - { type: straight, length: 300 }
+    - { type: arc, radius: 15, angle: -120 }
+    - { type: straight, length: 300 }
+    - { type: arc, radius: 25, angle: -90 }
+    - { type: straight, length: 100 }
+
+# ---------------------------------------------------------------------------
+# Excitation mode (used when mode == 'excitation')
+# Designed for Fz variation (decouple k values) and pure lat/long segments (decouple Cref vs Cref_lon).
+# ---------------------------------------------------------------------------
+excitation:
+  # Initial forward speed [m/s]
+  initial_speed_mps: 12
+  # Straight "path" length for elevation lookup only [m] (vehicle can drift off)
+  path_length_m: 2000
+
+  # Command sequence: list of phases applied in order.
+  # throttle_brake: +1 = full throttle, -1 = full brake, 0 = coast
+  # steer_deg: steering angle at front wheels [deg], positive = left
+  # max_steer_rate_deg_s: max steer rate (deg/s); set to 0 or omit to use exact phase values (no ramping).
+  repeat_phases: 2
+  phases:
+    # Pure longitudinal (separate Cref_lon): accel then brake
+    - { duration_s: 3, steer_deg: 0,   throttle_brake: 0.95 }   # Straight full throttle → rear Fz
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    - { duration_s: 3, steer_deg: 0,   throttle_brake: -0.85 }   # Straight heavy brake → front Fz
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    # Pure lateral (separate Cref): steady cornering only
+    - { duration_s: 3, steer_deg: 8,   throttle_brake: 0.0 }     # Left corner, coast
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    - { duration_s: 3, steer_deg: -8,  throttle_brake: 0.0 }    # Right corner, coast
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    # Fz variation: mixed corner + accel/brake
+    - { duration_s: 2, steer_deg: 6,   throttle_brake: 0.7 }    # Left + accel
+    - { duration_s: 2, steer_deg: -6,   throttle_brake: -0.5 }   # Right + brake
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    # Second pass: pure long again
+    - { duration_s: 3, steer_deg: 0,   throttle_brake: 0.9 }
+    - { duration_s: 3, steer_deg: 0,   throttle_brake: -0.75 }
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    # Stronger pure lateral
+    - { duration_s: 3, steer_deg: 10,  throttle_brake: 0.0 }
+    - { duration_s: 3, steer_deg: -10,  throttle_brake: 0.0 }
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }

@@ -1,0 +1,89 @@
+# Excitation-mode-only config: aggressive steering and accel/braking for estimator excitation.
+# Designed for:
+#   1) Fz variation — heavy brake (front-heavy Fz), heavy accel (rear-heavy Fz), steady cornering
+#      to decouple D_ref/k_load and Cref/k_load_stiff.
+#   2) Pure segments — straight accel/brake (longitudinal only) and steady cornering (lateral only)
+#      to separate Cref (lateral stiffness) from Cref_lon (longitudinal stiffness).
+# Use: python main_simulation.py --config simulation_config_excitation.yaml
+# Optional: python main_simulation.py --config simulation_config_excitation.yaml --live-debug
+
+mode: excitation
+
+# Set to true to show live debug plot (car position, velocity, Pacejka curves, traction ellipses).
+# Can also enable with CLI: --live-debug
+live_debug_plot: true
+
+# ---------------------------------------------------------------------------
+# Tyre temperature model (same structure as MPC)
+# When enabled, temperatures are computed each step and passed to the tyre model.
+# ---------------------------------------------------------------------------
+tyre_temperature:
+  # "none" = use nominal T_opt from tyre config (no variation)
+  # "sine" = T(t) = base + amplitude * sin(2*pi*freq*t) per axle
+  # "ode"  = single-state dT/dt from slip/load heating and Newton cooling
+  # "lumped" = two-state tread+bulk ODE per wheel (from thermal_fit model)
+  mode: none
+  # Sine mode
+  temp_sine_base_f: 60.0
+  temp_sine_base_r: 60.0
+  temp_sine_amplitude_f: 20.0
+  temp_sine_amplitude_r: 15.0
+  temp_sine_freq_f: 0.02
+  temp_sine_freq_r: 0.015
+  # ODE mode (single-state)
+  temp_ode_initial: 25.0
+  temp_ode_T_ambient: 25.0
+  temp_ode_heat_rate: 0.0
+  temp_ode_heat_rate_alpha: 0.03
+  temp_ode_heat_rate_kappa: 0.02
+  temp_ode_cooling_rate: 0.1
+  # Lumped mode (two-state tread+bulk per wheel, matches thermal_fit.py model):
+  #   dTt/dt = (1/c_tread) * [heat - k_bt*(Tt-Tb) - k_ta*(Tt-T_air) - k_tg*(Tt-T_ground)]
+  #   dTb/dt = (1/c_bulk)  * k_bt * (Tt - Tb)
+  lumped_T_initial: 60.0       # Initial tread & bulk temperature [°C]
+  lumped_T_air: 25.0           # Ambient air temperature [°C]
+  lumped_T_ground: 30.0        # Ground temperature [°C]
+  lumped_h_alpha: 0.03493      # Heating rate from slip angle [°C/(rad·N·s)] (fitted)
+  lumped_h_kappa: 0.0151       # Heating rate from slip ratio [°C/(1·N·s)]
+  lumped_k_bt: 0.423864        # Tread-bulk coupling coefficient [1/s] (fitted)
+  lumped_k_ta: 0.037442        # Tread-air convective coefficient [1/s] (fitted)
+  lumped_k_tg: 0.001           # Tread-ground conductive coefficient [1/s] (fitted)
+  lumped_c_tread: 1.0          # Tread thermal capacity (dimensionless scale)
+  lumped_c_bulk: 9.278181      # Bulk thermal capacity (dimensionless scale) (fitted)
+
+track:
+  num_laps: 1
+  segments: []
+
+excitation:
+  initial_speed_mps: 12
+  path_length_m: 2000
+  repeat_phases: 1
+  # Steer slew rate (deg/s). Set to 0 or omit to use exact phase steer_deg with no ramping.
+  max_steer_rate_deg_s: 0
+  phases:
+    # ---- Pure longitudinal: heavy accel (rear-heavy Fz), then brake (front-heavy Fz) ----
+    - { duration_s: 2, steer_deg: 0,   throttle_brake: 0.95 }   # Pure long: full throttle straight → rear Fz high
+    - { duration_s: 0.5, steer_deg: 0,   throttle_brake: 0.0 }     # Coast to settle
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: -0.65 }  # Pure long: heavy brake straight → front Fz high
+    - { duration_s: 0.5, steer_deg: 0,   throttle_brake: 0.0 }
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.8 }    
+    # ---- Pure lateral: steady cornering only (minimal Fx, mainly Fy → Cref) ----
+    - { duration_s: 2, steer_deg: 8,   throttle_brake: 0.0 }   # Pure lat: steady left corner, coast
+    - { duration_s: 0.2, steer_deg: 0,   throttle_brake: 0.0 }     # Straight
+    - { duration_s: 2, steer_deg: -8,  throttle_brake: 0.0 }    # Pure lat: steady right corner, coast
+    - { duration_s: 0.2, steer_deg: 0,   throttle_brake: 0.0 }     # Straight
+    # ---- Fz spread: cornering at different throttle (vary load while lateral) ----
+    - { duration_s: 3, steer_deg: 4,   throttle_brake: 0.1 }    # Left + accel → mixed Fz
+    - { duration_s: 1.5, steer_deg: -4,  throttle_brake: -0.1 }  # Right + brake → mixed Fz
+    - { duration_s: 0.5, steer_deg: 0,   throttle_brake: 0.0 }     # Coast
+    - { duration_s: 2, steer_deg: 0,   throttle_brake: 0.0 } 
+    # ---- Repeat pure longitudinal again for more Fz range data ----
+    - { duration_s: 3, steer_deg: 0,   throttle_brake: 0.8 }     # Straight accel
+    - { duration_s: 0.2, steer_deg: 0,   throttle_brake: 0.0 }
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: -0.65 } # Straight brake
+    - { duration_s: 1, steer_deg: 0,   throttle_brake: 0.0 }
+    # ---- Stronger pure lateral (more ay, more Fz spread) ----
+    - { duration_s: 6, steer_deg: 10,  throttle_brake: 0.1 }   # Strong left, coast
+    - { duration_s: 6, steer_deg: -10,  throttle_brake: 0.1 }   # Strong right, coast
+    - { duration_s: 0, steer_deg: 0,   throttle_brake: 0.0 }     # End coast
