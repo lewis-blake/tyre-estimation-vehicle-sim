@@ -1,6 +1,6 @@
 # Tyre estimation — vehicle simulator
 
-This repo is the 7-DOF vehicle simulator I split out from a larger tyre-parameter project.
+This repo is the 15-DOF vehicle simulator I split out from a larger tyre-parameter project.
 
 ## Setup
 
